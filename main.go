@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -42,7 +43,7 @@ func (d *Doors) open() {
 	}
 }
 
-func (d *Doors) closed() []int {
+func (d *Doors) close() []int {
 	ret := []int{}
 	for i := 0; i < 3; i++ {
 		if d.opened == i {
@@ -83,35 +84,38 @@ func sum(in chan map[string]int64) {
 	}
 }
 
+func run(chResults chan map[string]int64, wg *sync.WaitGroup) {
+	results := map[string]int64{
+		"move":    0,
+		"notMove": 0,
+	}
+	defer wg.Done()
+	for i := 0; i < 1000000; i++ {
+		doors := NewDoors()
+		doors.choice()
+		doors.open()
+		doors.Closed = append(doors.Closed, doors.close()...)
+		move, notMove := doors.result()
+		if move {
+			results["move"]++
+		}
+
+		if notMove {
+			results["notMove"]++
+		}
+	}
+	chResults <- results
+}
+
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	var wg sync.WaitGroup
 
 	chResults := make(chan map[string]int64, 16)
 
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
-		go func() {
-			results := map[string]int64{
-				"move":    0,
-				"notMove": 0,
-			}
-			defer wg.Done()
-			for i := 0; i < 10000000; i++ {
-				doors := NewDoors()
-				doors.choice()
-				doors.open()
-				doors.Closed = append(doors.Closed, doors.closed()...)
-				move, notMove := doors.result()
-				if move {
-					results["move"]++
-				}
-
-				if notMove {
-					results["notMove"]++
-				}
-			}
-			chResults <- results
-		}()
+		go run(chResults, &wg)
 	}
 	wg.Wait()
 
